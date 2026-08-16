@@ -350,9 +350,20 @@ class Database:
     @staticmethod
     def record_battery_soh(vin: str, date: datetime, level: float):
         conn = Database.get_db()
-        conn.execute("INSERT INTO battery_soh(date, VIN, level) VALUES(?,?,?)", (date, vin, level))
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute("INSERT INTO battery_soh(date, VIN, level) VALUES(?,?,?)", (date, vin, level))
+            conn.commit()
+        except sqlite3.IntegrityError as e:
+            # Check if we are reading the newest value
+            res = conn.execute("SELECT level FROM battery_soh WHERE VIN=? ORDER BY date DESC LIMIT 1",
+                               (vin,)).fetchall()
+            if res and res[0][0] != level:
+                conn.execute(
+                    "INSERT OR REPLACE INTO battery_soh (date, VIN, level) VALUES (?, ?, ?)",
+                    (date, vin, level))
+                conn.commit()
+        finally:
+            conn.close()
 
     @staticmethod
     def get_soh_by_vin(vin) -> BatterySoh:
